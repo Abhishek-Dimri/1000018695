@@ -1,57 +1,83 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
 import UrlShortener from './components/UrlShortener'
 import HistoryList from './components/HistoryList'
+import { api } from './api'
 
 function App() {
   const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  // Simple client-side redirect simulation for /r/:slug
+  // Load initial list from backend
   useEffect(() => {
-    const path = window.location.pathname
-    const match = path.match(/^\/r\/([A-Za-z0-9-_]+)/)
-    if (match) {
-      const slug = match[1]
-      const found = items.find((it) => it.slug === slug)
-      if (found) {
-        // increment clicks and redirect
-        setItems((prev) => prev.map((p) => p.slug === slug ? { ...p, clicks: (p.clicks || 0) + 1 } : p))
-        window.location.replace(found.url)
+    let alive = true
+    ;(async () => {
+      try {
+        const list = await api.list()
+        if (alive) setItems(list)
+      } catch (e) {
+        if (alive) setError(e?.message || 'Failed to load links')
+      } finally {
+        if (alive) setLoading(false)
       }
-    }
+    })()
+    return () => { alive = false }
   }, [])
 
-  const handleAdd = (item) => {
-    // prevent slug duplicates
-    if (items.some((it) => it.slug === item.slug)) {
-      alert('Slug already exists in your local list. Choose a different one.')
-      return
+  const handleCreate = async ({ url, slug }) => {
+    setError('')
+    const created = await api.shorten({ url, slug })
+    setItems((prev) => {
+      const filtered = prev.filter((p) => p.slug !== created.slug)
+      return [created, ...filtered]
+    })
+  }
+
+  const handleOpen = async (it) => {
+    // Optimistically increment locally for immediate UX
+    setItems((prev) => prev.map((p) => p.slug === it.slug ? { ...p, clicks: (p.clicks ?? 0) + 1 } : p))
+    // Open backend short URL to increment real count
+    window.open(it.shortUrl, '_blank', 'noopener')
+    // After a brief delay, pull latest counts from backend
+    setTimeout(async () => {
+      try {
+        const list = await api.list()
+        setItems(list)
+      } catch {}
+    }, 600)
+  }
+
+  const handleDelete = async (slug) => {
+    setError('')
+    try {
+      await api.remove(slug)
+      setItems((prev) => prev.filter((it) => it.slug !== slug))
+    } catch (e) {
+      setError(e?.message || 'Failed to delete link')
     }
-    setItems((prev) => [item, ...prev])
-  }
-
-  const handleOpen = (it) => {
-    window.open(it.url, '_blank', 'noopener')
-  }
-
-  const handleDelete = (slug) => {
-    setItems((prev) => prev.filter((it) => it.slug !== slug))
   }
 
   return (
     <div className="container">
       <header>
         <h1>URL Shortener</h1>
-        <p className="sub">Welcome to the URL Shortener App</p>
+        <p className="sub">Frontend + Backend demo (API at {api.base})</p>
       </header>
 
-      <UrlShortener onAdd={handleAdd} />
+      {error && (
+        <div className="card"><p className="error">{error}</p></div>
+      )}
 
-      <HistoryList items={items} onOpen={handleOpen} onDelete={handleDelete} />
+      <UrlShortener onCreate={handleCreate} shortBase={`${api.base}/r/`} />
+
+      {!loading && (
+        <HistoryList items={items} onOpen={handleOpen} onDelete={handleDelete} />
+      )}
 
       <footer className="footer">
         <small>
-          This demo keeps data in memory only and resets on refresh. No backend connected yet.
+          Backend stores data in memory only and resets on server restart.
         </small>
       </footer>
     </div>

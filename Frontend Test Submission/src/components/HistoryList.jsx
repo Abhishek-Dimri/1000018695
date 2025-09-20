@@ -21,7 +21,7 @@ export default function HistoryList({ items = [], onOpen, onDelete }) {
                 </a>
               </div>
               <div className="long" title={it.url}>{it.url}</div>
-              <div className="meta">Created {new Date(it.createdAt).toLocaleString()}</div>
+              <div className="meta">Created {new Date(it.createdAt).toLocaleString()} · Clicks {it.clicks ?? 0}</div>
             </div>
             <div className="col actions">
               <button onClick={() => onOpen?.(it)}>Open</button>

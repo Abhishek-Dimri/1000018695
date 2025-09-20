@@ -10,22 +10,18 @@ const isValidUrl = (value) => {
   }
 }
 
-const randomSlug = (len = 6) =>
-  Array.from({ length: len }, () =>
-    'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-      .charAt(Math.floor(Math.random() * 62))
-  ).join('')
-
-export default function UrlShortener({ onAdd }) {
+export default function UrlShortener({ onCreate, shortBase }) {
   const [url, setUrl] = useState('')
   const [customSlug, setCustomSlug] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
 
   const base = useMemo(() => {
-    // Frontend-only: use current origin as display base
+    // Preview against backend redirect base
+    if (shortBase) return shortBase.endsWith('/') ? shortBase : shortBase + '/'
     return `${window.location.origin}/r/`
-  }, [])
+  }, [shortBase])
 
   useEffect(() => {
     if (!copied) return
@@ -33,7 +29,7 @@ export default function UrlShortener({ onAdd }) {
     return () => clearTimeout(t)
   }, [copied])
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
@@ -42,23 +38,22 @@ export default function UrlShortener({ onAdd }) {
       return
     }
 
-    const slug = (customSlug || randomSlug()).trim()
-    if (!/^[a-zA-Z0-9-_]+$/.test(slug)) {
+    const slug = customSlug.trim()
+    if (slug && !/^[a-zA-Z0-9-_]+$/.test(slug)) {
       setError('Slug may contain letters, numbers, dash or underscore only.')
       return
     }
 
-    const item = {
-      slug,
-      url,
-      shortUrl: base + slug,
-      createdAt: new Date().toISOString(),
-      clicks: 0,
+    try {
+      setBusy(true)
+      await onCreate?.({ url, slug: slug || undefined })
+      setUrl('')
+      setCustomSlug('')
+    } catch (err) {
+      setError(err?.message || 'Failed to create short link')
+    } finally {
+      setBusy(false)
     }
-
-    onAdd?.(item)
-    setUrl('')
-    setCustomSlug('')
   }
 
   const handleCopy = async (text) => {
@@ -72,7 +67,7 @@ export default function UrlShortener({ onAdd }) {
 
   return (
     <div className="card">
-      <h2>Basic URL Shortener (frontend only)</h2>
+  <h2>Create a short URL</h2>
       <form onSubmit={handleSubmit} className="form">
         <label>
           <span>Destination URL</span>
@@ -96,7 +91,7 @@ export default function UrlShortener({ onAdd }) {
         </label>
 
         <div className="actions">
-          <button type="submit">Create short link</button>
+          <button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create short link'}</button>
           {customSlug && (
             <button type="button" onClick={() => handleCopy(base + customSlug)}>
               {copied ? 'Copied!' : 'Copy preview'}
@@ -107,9 +102,7 @@ export default function UrlShortener({ onAdd }) {
         {error && <p className="error">{error}</p>}
       </form>
 
-      <p className="hint">
-        Note: This is a frontend-only demo. Links are not persisted to a server and redirecting is simulated.
-      </p>
+      <p className="hint">Backend: {base.replace(/\/$/, '')}</p>
     </div>
   )
 }
