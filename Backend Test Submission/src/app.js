@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import routes from './routes/links.routes.js'
+import { requestLogger } from './middleware/logger.js'
 
 export function createApp() {
   const app = express()
@@ -10,6 +11,7 @@ export function createApp() {
   app.set('trust proxy', true)
 
   app.use(cors({ origin: FRONTEND_ORIGIN }))
+  app.use(requestLogger)
   app.use(express.json())
   app.use(routes)
 
